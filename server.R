@@ -12,6 +12,7 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(RJSONIO)
+library(shinydashboard)
 
 team_colors <- read.csv('team_colors.csv')
 
@@ -44,53 +45,23 @@ shinyServer(function(input, output,session) {
     colnames(recent_games) <- c('Game','GameID','Home','Visitor')
     recent_games
   })
-  
+  #Create named list for game selector choices
+  recent_games_named_list <- reactive({
+    setNames(as.character(recent_games()$GameID),recent_games()$Game)
+  })
   #Generate UI Selector for Games
   output$game_selector <- renderUI({
-    selectInput(inputId = 'game_selector',label = 'Select a Game',choices = recent_games()$Game,selected = recent_games()$GameID[1])
+    selectInput(inputId = 'game_selector',label = 'Select a Game',choices = recent_games_named_list())
   })
-  gameID_selected <- reactive({ as.character(filter(recent_games(),Game==input$game_selector)$GameID) })
-  
+  game_selected <- reactive({ as.character(filter(recent_games(),GameID==input$game_selector)$Game) })
   
   
   ################
   ################
   ################
-#   df <- reactive({
-#     #url <- "http://stats.nba.com/stats/playbyplayv2?EndPeriod=10&GameID=0041600104&StartPeriod=1"
-#     url <- paste0("http://stats.nba.com/stats/playbyplayv2?EndPeriod=10&GameID=",gameID_selected(),"&StartPeriod=1")
-#     remDr$client$navigate(url)
-#     raw_source <- remDr$client$getPageSource(url)
-# 
-#     text <- read_html(raw_source[[1]]) %>% 
-#       html_nodes("pre") %>% 
-#       html_text()
-#     
-#     json_text <- fromJSON(text)$resultSets[[1]]
-#     
-#     df <- as.data.frame(t(sapply(1:length(json_text$rowSet), function(X){
-#       json_text$rowSet[[X]][sapply(json_text$rowSet[[X]], is.null)] <- NA
-#       unlist(json_text$rowSet[[X]]) }
-#     )))
-#     colnames(df) <- json_text$headers
-#     df
-#   })
-#   
-#   scoringPlays <- reactive({
-#     df() %>% 
-#       filter(!is.na(SCORE)) %>% 
-#       select(SCORE,PCTIMESTRING,PERIOD) %>% 
-#       separate(SCORE,into = c('vst_score','hm_score')) %>% 
-#       separate(PCTIMESTRING, into = c('mins','secs')) %>% 
-#       mutate(real_time = as.numeric(mins)+as.numeric(secs)/60) %>% 
-#       mutate(total_time = (as.numeric(PERIOD)-1)*12+(12-real_time) ) %>% 
-#       mutate(vst_score=as.numeric(vst_score),hm_score=as.numeric(hm_score)) %>% 
-#       select(vst_score,hm_score,total_time) %>% 
-#       unique()
-#   })
   
   df <- reactive({
-    url <- paste0("http://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2016/scores/pbp/",gameID_selected(),"_full_pbp.json") #'0041600202'
+    url <- paste0("http://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2016/scores/pbp/",input$game_selector,"_full_pbp.json") #'0041600202'
     remDr$client$navigate(url)
     raw_source <- remDr$client$getPageSource(url)
     
@@ -144,13 +115,22 @@ shinyServer(function(input, output,session) {
   
   #Team Colors
   home_team_color <- reactive({
-    team_code <- strsplit(input$game_selector,split = ' ')[[1]][1]
+    team_code <- strsplit(game_selected(),split = ' ')[[1]][1]
     as.character(filter(team_colors,code==team_code)$hex)
   })
   vst_team_color <- reactive({
-    team_code <- strsplit(input$game_selector,split = ' ')[[1]][3]
+    team_code <- strsplit(game_selected(),split = ' ')[[1]][3]
     as.character(filter(team_colors,code==team_code)$hex)
   })
+  home_team_text_color <- reactive({
+    team_code <- strsplit(game_selected(),split = ' ')[[1]][1]
+    as.character(filter(team_colors,code==team_code)$textcolor)
+  })
+  vst_team_text_color <- reactive({
+    team_code <- strsplit(game_selected(),split = ' ')[[1]][3]
+    as.character(filter(team_colors,code==team_code)$textcolor)
+  })
+
 
   output$mainPlot <- renderPlot({
     home_color = home_team_color() #'blue'
@@ -160,7 +140,53 @@ shinyServer(function(input, output,session) {
       geom_ribbon(aes(x=total_time, ymin=pmax(vst_score,hm_score), ymax=hm_score, group=1), fill=vst_color,alpha="0.5") +
       geom_ribbon(aes(x=total_time, ymin=pmax(vst_score,hm_score), ymax=vst_score, group=1), fill=home_color,alpha="0.5") +
       geom_line(aes(total_time,hm_score),color=home_color,size=2) +
-      geom_line(aes(total_time,vst_score),color=vst_color,size=2)
+      geom_line(aes(total_time,vst_score),color=vst_color,size=2) +
+      
+      scale_y_continuous(breaks=seq(0,175,25))+
+      xlab('Time (mins)')+
+      ylab('Score')+
+      theme(panel.grid.minor = element_blank(),
+            axis.title = element_text(size=14),
+            axis.text = element_text(size=12))
+#     ggplot(graphData.linear()) +
+#       geom_ribbon(aes(x=total_time, ymin=pmax(vst_score,hm_score), ymax=hm_score, group=1), fill="red",alpha="0.5") +
+#       geom_ribbon(aes(x=total_time, ymin=pmax(vst_score,hm_score), ymax=vst_score, group=1), fill="blue",alpha="0.5") +
+#       geom_line(aes(total_time,hm_score),color="blue",size=2) +
+#       geom_line(aes(total_time,vst_score),color="red",size=2)
+  })
+
+  hs_final <- reactive({ unlist(tail(df(),1)[,'hs']) })
+  vs_final <- reactive({ unlist(tail(df(),1)[,'vs']) })
+  
+  output$homescore_box <- renderUI({
+    hm_team_code <- strsplit(game_selected(),split = ' ')[[1]][1]
+    vs_team_code <- strsplit(game_selected(),split = ' ')[[1]][3]
+    
+    tags$div(id='score_box',
+      HTML(paste0("<img src='images/",hm_team_code,".png' alt='",hm_team_code,"' style='height:80px;'>"))
+      ,tags$span(id='hs_box', hs_final()) #team_logos/BOS.png
+      ,tags$span('    ')
+      ,HTML(paste0("<img src='images/",vs_team_code,".png' alt='",vs_team_code,"' style='height:80px;'>"))
+      ,tags$span(id='vs_box',vs_final())
+    )
+  })
+  
+  output$style <- renderUI({
+    tags$style(type="text/css",
+               ".shiny-output-error { visibility: hidden; }",
+               ".shiny-output-error:before { visibility: hidden; }",
+               "#score_box {margin-top: 10px;
+                            margin-bottom: 10px;}",
+               "#score_box span {
+                         padding: 10px;
+                         margin: 10px;
+                         vertical-align: top;
+                         font-size: 60px;}",
+               paste0("#hs_box {background-color:",home_team_color()," ;
+                                color:",home_team_text_color(),";}"),
+               paste0("#vs_box {background-color:",vst_team_color()," ;
+                                color:",vst_team_text_color(),";}")
+    )
   })
   
   output$table <- renderTable({ graphData.linear() })

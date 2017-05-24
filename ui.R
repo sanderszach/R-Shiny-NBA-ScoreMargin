@@ -8,6 +8,12 @@
 library(shiny)
 
 shinyUI(fluidPage(
+  
+  uiOutput('style'),
+  tags$style(type="text/css",
+             ".shiny-output-error { visibility: hidden; }",
+             ".shiny-output-error:before { visibility: hidden; }"
+  ),
 
   # Application title
   titlePanel("Basketball Game Trends"),
@@ -21,9 +27,11 @@ shinyUI(fluidPage(
 
     # Show a plot of the generated distribution
     mainPanel(
-      plotOutput("mainPlot")
-      ,tableOutput("table")
-      ,textOutput("text")
+      uiOutput('homescore_box')
+      ,plotOutput("mainPlot")
+
+      #,tableOutput("table")
+      #,textOutput("text")
     )
   )
 ))
